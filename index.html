@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>¿Dónde comemos? Los mejor valorados cerca de ti</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#F2F5F2;--ink:#12272B;--muted:#58696B;--line:#D3DDDA;--teal:#0E5A62;--saffron:#F2B01E;--card:#FFFFFF}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{font-family:"Bricolage Grotesque",system-ui,sans-serif;background:var(--bg);color:var(--ink);line-height:1.45}
+.app{display:grid;grid-template-columns:minmax(340px,440px) 1fr;height:100%}
+.panel{display:flex;flex-direction:column;min-height:0;border-right:1px solid var(--line)}
+.head{padding:20px 20px 14px}
+h1{font-size:2rem;font-weight:800;letter-spacing:-.03em;margin:0 0 4px;line-height:1.05}
+.sub{margin:0 0 14px;color:var(--muted);font-size:.95rem}
+.row{display:flex;gap:8px;margin-bottom:10px}
+input,select,button{font:inherit}
+input[type=search]{flex:1;min-width:0;padding:9px 12px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink)}
+select{padding:9px 8px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink)}
+.btn{padding:9px 14px;border-radius:8px;border:1px solid var(--teal);background:var(--teal);color:#fff;font-weight:600;cursor:pointer}
+.btn.ghost{background:transparent;color:var(--teal)}
+.btn:hover{filter:brightness(1.1)}
+:focus-visible{outline:3px solid var(--saffron);outline-offset:2px}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px}
+.chip{padding:5px 11px;border-radius:999px;border:1px solid var(--line);background:var(--card);color:var(--ink);cursor:pointer;font-size:.88rem}
+.chip[aria-pressed=true]{background:var(--saffron);border-color:var(--saffron);font-weight:600}
+#status{padding:8px 20px;font-size:.9rem;color:var(--muted);border-top:1px solid var(--line);min-height:36px}
+#list{list-style:none;margin:0;padding:0;overflow-y:auto;flex:1}
+#list li{display:grid;grid-template-columns:34px 1fr;gap:10px;padding:14px 20px;border-top:1px solid var(--line);cursor:pointer;background:var(--card)}
+#list li:hover,#list li.on{background:#E8F0EE}
+.rank{width:30px;height:30px;border-radius:50%;background:var(--teal);color:#fff;display:grid;place-items:center;font-weight:700;font-size:.9rem}
+.name{font-weight:600;font-size:1.05rem}
+.stars{font-weight:700}
+.stars b{color:#C98A00;letter-spacing:.05em}
+.meta{color:var(--muted);font-size:.88rem}
+a{color:var(--teal);font-weight:600}
+.foot{padding:10px 20px;font-size:.78rem;color:var(--muted);border-top:1px solid var(--line)}
+.me{width:16px;height:16px;border-radius:50%;background:#2563eb;border:3px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.25)}
+#map{height:100%;min-height:0}
+@media(max-width:760px){
+  .app{grid-template-columns:1fr;grid-template-rows:42vh 1fr}
+  #map{order:-1}
+  .panel{border-right:0}
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <section class="panel">
+    <div class="head">
+      <h1>¿Dónde comemos?</h1>
+      <p class="sub">Los restaurantes mejor valorados cerca de ti.</p>
+      <div class="row">
+        <button class="btn" id="locate">Usar mi ubicación</button>
+        <select id="radius" aria-label="Radio de búsqueda">
+          <option value="500">500 m</option>
+          <option value="1000" selected>1 km</option>
+          <option value="2000">2 km</option>
+          <option value="5000">5 km</option>
+        </select>
+      </div>
+      <form class="row" id="manual">
+        <input type="search" id="place" placeholder="O escribe una ciudad o barrio" aria-label="Ciudad o barrio">
+        <button class="btn ghost" type="submit">Buscar</button>
+      </form>
+      <div class="chips" id="chips" role="group" aria-label="Tipo de cocina"></div>
+    </div>
+    <div id="status" role="status" aria-live="polite">Cargando el mapa…</div>
+    <ul id="list"></ul>
+    <div class="foot">Valoraciones y datos de Google Maps. Tu ubicación se usa solo para esta búsqueda y no se guarda.</div>
+  </section>
+  <div id="map" role="application" aria-label="Mapa de restaurantes"></div>
+</div>
+
+<script>
+// ============ CONFIGURACIÓN ============
+const API_KEY = 'TU_CLAVE_DE_GOOGLE_AQUI';   // restringida a tu dominio (ver instrucciones)
+const MIN_REVIEWS = 10;                       // oculta sitios con muy pocas reseñas
+// =======================================
+
+const $ = s => document.querySelector(s);
+const status = m => $('#status').textContent = m;
+
+// Cada interés se traduce en tipos de lugar de Google
+const INTERESTS = {
+  'Española':             ['spanish_restaurant'],
+  'Italiana y pizza':     ['italian_restaurant', 'pizza_restaurant'],
+  'Japonesa y sushi':     ['japanese_restaurant', 'sushi_restaurant', 'ramen_restaurant'],
+  'Asiática':             ['chinese_restaurant', 'thai_restaurant', 'vietnamese_restaurant', 'korean_restaurant', 'indian_restaurant'],
+  'Mexicana':             ['mexican_restaurant'],
+  'Hamburguesas':         ['hamburger_restaurant'],
+  'Marisco':              ['seafood_restaurant'],
+  'Mediterránea':         ['mediterranean_restaurant'],
+  'Carnes y parrilla':    ['steak_house', 'barbecue_restaurant'],
+  'Vegetariano / vegano': ['vegetarian_restaurant', 'vegan_restaurant']
+};
+const selected = new Set();
+let map, Place, Rank, Marker, Pin, info, pos, meMarker, markers = [], seq = 0;
+
+for (const name of Object.keys(INTERESTS)) {
+  const b = Object.assign(document.createElement('button'), { className: 'chip', type: 'button', textContent: name });
+  b.setAttribute('aria-pressed', 'false');
+  b.onclick = () => {
+    selected.has(name) ? selected.delete(name) : selected.add(name);
+    b.setAttribute('aria-pressed', selected.has(name));
+    if (pos) load();
+  };
+  $('#chips').appendChild(b);
+}
+
+// Carga de Google Maps
+window.gm_authFailure = () => status('La clave de Google no es válida o no está autorizada para este dominio.');
+window.initMap = async () => {
+  map = new google.maps.Map($('#map'), {
+    center: { lat: 40.2, lng: -3.7 }, zoom: 6, mapId: 'DEMO_MAP_ID',
+    streetViewControl: false, mapTypeControl: false, clickableIcons: false
+  });
+  info = new google.maps.InfoWindow();
+  ({ Place, SearchNearbyRankPreference: Rank } = await google.maps.importLibrary('places'));
+  ({ AdvancedMarkerElement: Marker, PinElement: Pin } = await google.maps.importLibrary('marker'));
+  locate();   // pide la ubicación nada más abrir la web
+};
+if (!API_KEY || API_KEY.startsWith('TU_CLAVE')) {
+  status('Falta la clave de Google: edita API_KEY en index.html.');
+} else {
+  const s = document.createElement('script');
+  s.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(API_KEY)}&loading=async&callback=initMap&language=es&v=weekly`;
+  s.async = true;
+  s.onerror = () => status('No se pudo cargar Google Maps. Revisa tu conexión.');
+  document.head.appendChild(s);
+}
+
+// Ubicación
+function locate() {
+  if (!navigator.geolocation) return status('Tu navegador no permite geolocalización. Escribe un lugar.');
+  status('Permite el acceso a tu ubicación para ver restaurantes cerca de ti…');
+  navigator.geolocation.getCurrentPosition(
+    p => setPos(p.coords.latitude, p.coords.longitude),
+    e => status(e.code === 1
+      ? 'Has denegado la ubicación. Escribe una ciudad o barrio para buscar.'
+      : 'No se pudo obtener tu ubicación. Escribe una ciudad o barrio.'),
+    { enableHighAccuracy: true, timeout: 15000 });
+}
+$('#locate').onclick = () => map ? locate() : status('Espera a que cargue el mapa.');
+$('#radius').onchange = () => pos && load();
+
+$('#manual').onsubmit = async e => {
+  e.preventDefault();
+  const q = $('#place').value.trim();
+  if (!q || !map) return;
+  status('Buscando el lugar…');
+  try {
+    const r = await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&q=' + encodeURIComponent(q));
+    const j = await r.json();
+    if (!j.length) return status('No encontramos ese lugar. Prueba con otro nombre.');
+    setPos(+j[0].lat, +j[0].lon);
+  } catch { status('Error al buscar el lugar. Inténtalo de nuevo.'); }
+};
+
+function setPos(lat, lng) {
+  pos = { lat, lng };
+  if (meMarker) meMarker.map = null;
+  const dot = Object.assign(document.createElement('div'), { className: 'me' });
+  meMarker = new Marker({ map, position: pos, content: dot, title: 'Estás aquí' });
+  map.setCenter(pos); map.setZoom(15);
+  load();
+}
+
+// Búsqueda y ordenación por estrellas
+async function load() {
+  const mine = ++seq;
+  status('Buscando restaurantes…');
+  const types = [...selected].flatMap(n => INTERESTS[n]);
+  try {
+    const { places } = await Place.searchNearby({
+      fields: ['displayName', 'location', 'rating', 'userRatingCount', 'formattedAddress',
+               'googleMapsURI', 'primaryTypeDisplayName', 'priceLevel'],
+      locationRestriction: { center: pos, radius: +$('#radius').value },
+      includedPrimaryTypes: types.length ? types : ['restaurant'],
+      maxResultCount: 20,
+      rankPreference: Rank.POPULARITY,
+      language: 'es'
+    });
+    if (mine !== seq) return;   // llegó una búsqueda más reciente
+    render(places);
+  } catch (err) {
+    console.error(err);
+    status('No se pudo consultar Google Places. Comprueba que "Places API (New)" está activada para tu clave.');
+  }
+}
+
+function km(a, b) {
+  const R = 6371000, r = x => x * Math.PI / 180;
+  const h = Math.sin(r(b.lat - a.lat) / 2) ** 2 + Math.cos(r(a.lat)) * Math.cos(r(b.lat)) * Math.sin(r(b.lng - a.lng) / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+const euros = l => ({ INEXPENSIVE: '€', MODERATE: '€€', EXPENSIVE: '€€€', VERY_EXPENSIVE: '€€€€' })[String(l || '').replace('PRICE_LEVEL_', '')] || '';
+
+function render(places) {
+  markers.forEach(m => m.map = null); markers = [];
+  const list = $('#list'); list.innerHTML = '';
+  let items = places.filter(p => p.rating != null);
+  const solid = items.filter(p => (p.userRatingCount || 0) >= MIN_REVIEWS);
+  if (solid.length >= 3) items = solid;
+  items.sort((a, b) => b.rating - a.rating || (b.userRatingCount || 0) - (a.userRatingCount || 0));
+
+  if (!items.length) return status('No hay restaurantes valorados en esta zona. Amplía el radio o quita filtros.');
+  status(`${items.length} restaurantes, de mayor a menor valoración.`);
+
+  const bounds = new google.maps.LatLngBounds(pos);
+  items.forEach((p, i) => {
+    const loc = { lat: p.location.lat(), lng: p.location.lng() };
+    const d = km(pos, loc);
+    const dTxt = d < 1000 ? Math.round(d / 10) * 10 + ' m' : (d / 1000).toFixed(1) + ' km';
+    const name = p.displayName || '';
+    const meta = [p.primaryTypeDisplayName, euros(p.priceLevel), dTxt].filter(Boolean).join(' · ');
+    const count = (p.userRatingCount || 0).toLocaleString('es-ES');
+
+    const pin = new Pin({ glyph: String(i + 1), background: '#0E5A62', borderColor: '#fff', glyphColor: '#fff' });
+    const marker = new Marker({ map, position: loc, content: pin.element, title: name });
+    markers.push(marker); bounds.extend(loc);
+
+    const li = document.createElement('li');
+    const rank = Object.assign(document.createElement('div'), { className: 'rank', textContent: i + 1 });
+    const body = document.createElement('div');
+    const nameEl = Object.assign(document.createElement('div'), { className: 'name', textContent: name });
+    const stars = document.createElement('div'); stars.className = 'stars';
+    stars.append(Object.assign(document.createElement('b'), { textContent: '★ ' }),
+                 `${p.rating.toFixed(1).replace('.', ',')} `,
+                 Object.assign(document.createElement('span'), { className: 'meta', textContent: `(${count} reseñas)` }));
+    const metaEl = Object.assign(document.createElement('div'), { className: 'meta', textContent: meta });
+    const addr = Object.assign(document.createElement('div'), { className: 'meta', textContent: p.formattedAddress || '' });
+    const link = Object.assign(document.createElement('a'),
+      { href: p.googleMapsURI, target: '_blank', rel: 'noopener', textContent: 'Abrir en Google Maps' });
+    body.append(nameEl, stars, metaEl, addr, link);
+    li.append(rank, body);
+
+    const focus = () => {
+      document.querySelectorAll('#list li.on').forEach(x => x.classList.remove('on'));
+      li.classList.add('on');
+      const box = document.createElement('div');
+      box.append(Object.assign(document.createElement('strong'), { textContent: name }),
+                 document.createElement('br'), `★ ${p.rating.toFixed(1).replace('.', ',')} · ${meta}`);
+      info.setContent(box); info.open({ map, anchor: marker });
+      map.panTo(loc); if (map.getZoom() < 16) map.setZoom(16);
+    };
+    li.onclick = e => { if (e.target.tagName !== 'A') focus(); };
+    marker.addListener('click', () => { focus(); li.scrollIntoView({ block: 'nearest' }); });
+    list.appendChild(li);
+  });
+  map.fitBounds(bounds, 50);
+}
+</script>
+</body>
+</html>
