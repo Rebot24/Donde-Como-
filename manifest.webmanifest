@@ -1,0 +1,14 @@
+{
+  "name": "Restaurantes top",
+  "short_name": "Restaurantes",
+  "description": "Encuentra los restaurantes mejor valorados cerca de ti.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0A7A4D",
+  "theme_color": "#0A7A4D",
+  "icons": [
+    {"src": "icons/Icon-192.png", "sizes": "192x192", "type": "image/png"},
+    {"src": "icons/Icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable"}
+  ]
+}
